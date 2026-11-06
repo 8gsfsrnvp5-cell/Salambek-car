@@ -30,10 +30,8 @@ DEFAULTS: dict[str, object] = {
     "pricing.labor_rate": None,  # стоимость нормо-часа, если используется
     # налоги — не настроены, налоги не рассчитываются
     "tax.regime": "",
-    "tax.vat_mode": "not_configured",  # not_configured | not_payer | included | on_top
+    "tax.vat_mode": "not_configured",  # not_configured | not_payer | included
     "tax.vat_rate": None,
-    # склад
-    "stock.allow_negative": False,
     # резервное копирование
     "backup.local_interval_hours": 2,
     "backup.local_keep": 24,
@@ -43,6 +41,7 @@ DEFAULTS: dict[str, object] = {
     "backup.verify_weekly": True,
     "backup.monthly_reminder": True,
     "backup.encrypt": False,
+    "backup.password_dpapi": "",  # пароль копий по расписанию, защищён Windows DPAPI
     "backup.min_free_mb": 200,
     "backup.last_local": None,
     "backup.last_external": None,
@@ -66,7 +65,6 @@ VAT_MODES = {
     "not_configured": "Не настроено (НДС не указывается)",
     "not_payer": "Без НДС (не плательщик)",
     "included": "НДС включён в цену",
-    "on_top": "НДС сверху",
 }
 
 TAX_REGIMES = ["", "ОСНО", "УСН «Доходы»", "УСН «Доходы минус расходы»", "АУСН", "ПСН", "НПД", "Другое"]
@@ -124,6 +122,10 @@ def update_settings(ctx: AppContext, values: dict) -> None:
 
                 raise ValidationError("Ставка НДС должна быть от 0 до 100 %")
             value = str(rate)
+        elif key == "tax.vat_mode" and value not in VAT_MODES:
+            from autoservice.domain.errors import ValidationError
+
+            raise ValidationError("Неизвестный режим НДС")
         elif value == "" and DEFAULTS[key] is None:
             value = None
         cleaned[key] = value
@@ -142,3 +144,23 @@ def default_markup(s: Session) -> Decimal | None:
 def read_settings(ctx: AppContext) -> dict:
     with ctx.db.read() as s:
         return get_all(s)
+
+
+def set_backup_password(ctx: AppContext, password: str | None) -> None:
+    """Включает шифрование копий по расписанию. Пароль хранится только в виде,
+    защищённом Windows DPAPI для текущей учётной записи. None — выключить."""
+    from autoservice.backup import dpapi
+    from autoservice.domain.errors import ValidationError
+
+    ctx.require(Perm.BACKUP_CONFIGURE)
+    with ctx.db.transaction() as s:
+        if not password:
+            _store(s, "backup.encrypt", False)
+            _store(s, "backup.password_dpapi", "")
+            audit(s, ctx, "backup.encryption_off", "settings", None)
+            return
+        if len(password) < 8:
+            raise ValidationError("Пароль шифрования копий — не менее 8 символов")
+        _store(s, "backup.password_dpapi", dpapi.protect(password))
+        _store(s, "backup.encrypt", True)
+        audit(s, ctx, "backup.encryption_on", "settings", None)

@@ -35,6 +35,8 @@ def run_migrations_online() -> None:
     engine = create_engine(config.get_main_option("sqlalchemy.url"))
     with engine.connect() as conn:
         conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        # Завершаем неявную транзакцию, иначе Alembic сочтёт её внешней и не зафиксирует миграции.
+        conn.commit()
         context.configure(
             connection=conn,
             target_metadata=target_metadata,

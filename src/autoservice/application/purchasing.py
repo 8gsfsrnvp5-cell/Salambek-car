@@ -192,7 +192,7 @@ def delete_draft(ctx: AppContext, purchase_id: int) -> None:
         s.delete(po)
 
 
-def post_purchase(ctx: AppContext, purchase_id: int) -> None:
+def post_purchase(ctx: AppContext, purchase_id: int, allow_zero_price: bool = False) -> None:
     """Проведение: товар поступает на склад партиями. Повторное проведение невозможно."""
     ctx.require(Perm.PURCHASE_POST)
     with ctx.db.transaction() as s:
@@ -201,6 +201,9 @@ def post_purchase(ctx: AppContext, purchase_id: int) -> None:
             raise ValidationError("Укажите поставщика перед проведением")
         if not po.items:
             raise ValidationError("В закупке нет строк")
+        zero = [i.part.name for i in po.items if i.unit_price == 0]
+        if zero and not allow_zero_price:
+            raise ValidationError("Нулевая цена закупки: " + "; ".join(zero) + ". Укажите цену или подтвердите бесплатное поступление.")
         # Атомарная защита от повторного проведения: статус меняется только из «Черновик».
         result = s.execute(
             update(PurchaseOrder)
