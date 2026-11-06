@@ -307,6 +307,15 @@ class PurchaseEditor(QDialog):
             open_path(path)
 
 
+def _dec(value):
+    from decimal import Decimal, InvalidOperation
+
+    try:
+        return Decimal(str(value)) if value not in (None, "") else None
+    except InvalidOperation:
+        return None
+
+
 class InvoiceReviewDialog(QDialog):
     def __init__(self, ctx, import_id, parent=None):
         super().__init__(parent)
@@ -320,7 +329,7 @@ class InvoiceReviewDialog(QDialog):
         self.warn = label("", "Warning")
         lay.addWidget(self.warn)
         self.table = DataTable([("line_no", "№", "text"), ("article", "Артикул", "text"), ("name", "Наименование", "text"),
-                                ("qty", "Кол-во", "text"), ("unit", "Ед.", "text"), ("price", "Цена", "text"), ("amount", "Сумма", "text"),
+                                ("qty_d", "Кол-во", "qty"), ("unit", "Ед.", "text"), ("price_d", "Цена", "money"), ("amount_d", "Сумма", "money"),
                                 ("match", "Сопоставление", "text"), ("flags_text", "Требует внимания", "text")],
                                empty_text="Строки не распознаны — введите закупку вручную по оригиналу")
         lay.addWidget(self.table, 1)
@@ -356,7 +365,7 @@ class InvoiceReviewDialog(QDialog):
             match = ln.get("match_title") or {"ambiguous": "Несколько вариантов", "not_found": "Не найдено"}.get(ln.get("match_status"), "")
             if ln.get("skip"):
                 match = "ПРОПУЩЕНА"
-            rows.append({**ln, "_index": i, "match": match, "flags_text": "; ".join(ln.get("flags", [])),
+            rows.append({**ln, "_index": i, "qty_d": _dec(ln.get("qty")), "price_d": _dec(ln.get("price")), "amount_d": _dec(ln.get("amount")), "match": match, "flags_text": "; ".join(ln.get("flags", [])),
                          "_color": "#b45309" if (ln.get("flags") and not ln.get("skip")) else ("#9ca3af" if ln.get("skip") else None)})
         self.table.set_rows(rows)
         editable = imp["status"] == "needs_review"

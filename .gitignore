@@ -41,3 +41,6 @@ autoservice.ini
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Видеоурок (собирается tools/tutorial/make_video.py)
+video/

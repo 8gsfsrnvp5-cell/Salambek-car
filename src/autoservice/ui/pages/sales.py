@@ -10,6 +10,7 @@ from autoservice.application import catalog, sales, vehicles
 from autoservice.documents import generator, printing
 from autoservice.domain.enums import DocStatus, PaymentKind, PaymentMethod
 from autoservice.domain.errors import ValidationError
+from autoservice.domain.markup import SOURCE_TITLES
 from autoservice.security.permissions import Perm
 from autoservice.ui.common import (
     FAILED,
@@ -106,7 +107,7 @@ class SaleLineDialog(FormDialog):
             text = f"Себестоимость неизвестна — цена введена вручную: {fmt(p['unit_price'], 'money')}. Прибыль не рассчитывается."
         else:
             text = (f"Себестоимость ед.: {fmt(p['unit_cost'], 'money')}{' (оценка по последней закупке)' if p['cost_estimated'] else ''} · "
-                    f"наценка {fmt(p['markup_pct'], 'percent')} ({p['markup_source']}) · цена {fmt(p['unit_price'], 'money')} · "
+                    f"наценка {fmt(p['markup_pct'], 'percent')} ({SOURCE_TITLES.get(p['markup_source'], p['markup_source'])}) · цена {fmt(p['unit_price'], 'money')} · "
                     f"сумма {fmt(p['amount_gross'], 'money')} · валовая прибыль {fmt(p['gross_profit'], 'money')}")
         if not p["enough_stock"]:
             text += f"\n⚠ Недостаточно доступного остатка ({fmt(p['available'], 'qty')})."
