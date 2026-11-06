@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Сборка
+build/
+dist/
+installer/Output/
+*.spec.bak
+
+# Рабочие данные программы — никогда не отправлять в GitHub
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.asbak
+*.asbak.enc
+data-dev/
+attachments/
+backups/
+exports/
+logs/
+autoservice.ini
+
+# Секреты
+.env
+*.pem
+*.key
+
+# Редакторы и ОС
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
