@@ -143,7 +143,8 @@ def test_assistant_levels_and_no_invented_parts(app):
     assert any(h["dtc_code"] == "P0171" and h["level"] == Confidence.NEEDS_CHECK for h in res["hypotheses"])
     assert res["history"] and res["history"][0]["level"] == Confidence.CONFIRMED  # заказ-наряд с P0171 выдан
     assert res["parts"] == []  # применимость не указана → детали не предлагаются
-    assert any("нет запчастей категории" in w for w in res["warnings"])
+    assert any("нет запчастей категории" in w for w in res["notes"])
+    assert not res["warnings"]  # «горит чек» — не признак опасности
     catalog.add_compatibility(app, data["filter"], {"make": "Toyota", "model": "Camry", "source": "Каталог Toyota EPC",
                                                     "verification_status": Verification.CONFIRMED})
     res2 = analyze(app, DiagnosisInput(make="Toyota", model="Camry", complaint="течь масла из-под фильтра, лампа давления масла"))

@@ -25,8 +25,9 @@ from autoservice.persistence.models import AIRecommendation, DiagnosticRule, Par
 from autoservice.security.permissions import Perm
 
 DTC_RE = re.compile(r"\b([PBCU][0-3][0-9A-F]{3})\b", re.IGNORECASE)
-CRITICAL_WORDS = ("тормоз", "руль", "рулев", "подушк", "airbag", "высоковольт", "гибрид", "электромобил", "запах бензина",
-                  "течь топлива", "утечка топлива", "дым", "горит", "возгоран")
+# Слова, указывающие на системы безопасности. «Горит лампа/чек» сюда не относится.
+CRITICAL_WORDS = ("тормоз", "руль", "рулев", "подушк", "airbag", "srs", "высоковольт", "запах бензина", "запах топлива",
+                  "течь топлива", "утечка топлива", "возгоран", "пожар", "дым из-под капота", "запах гари")
 CRITICAL_TEXT = ("Неисправность может затрагивать системы, от которых зависит безопасность (тормоза, рулевое управление, "
                  "подушки безопасности, высоковольтные и топливные системы). Требуется профессиональная проверка; "
                  "эксплуатация автомобиля до устранения может быть опасна.")
@@ -90,7 +91,7 @@ def analyze(ctx: AppContext, inp: DiagnosisInput, log_result: bool = True) -> di
     codes = sorted({c.upper() for c in DTC_RE.findall(f"{inp.codes} {inp.complaint} {inp.diagnostics}")})
     text_all = normalize_text(f"{inp.complaint} {inp.diagnostics}")
     result: dict = {"input": asdict(inp), "codes": codes, "missing_info": _missing(inp, codes), "hypotheses": [],
-                    "history": [], "library": [], "parts": [], "warnings": [], "disclaimer": DISCLAIMER}
+                    "history": [], "library": [], "parts": [], "warnings": [], "notes": [], "disclaimer": DISCLAIMER}
     with ctx.db.read() as s:
         from autoservice.application.settings_service import get_setting
 
@@ -155,7 +156,7 @@ def analyze(ctx: AppContext, inp: DiagnosisInput, log_result: bool = True) -> di
             covered = {p["category"] for p in result["parts"]}
             for code in wanted:
                 if code in categories and categories[code].name not in covered:
-                    result["warnings"].append(
+                    result["notes"].append(
                         f"В каталоге нет запчастей категории «{categories[code].name}» с указанной применимостью к "
                         f"{inp.make} {inp.model}. Подбор — по каталогу производителя или по VIN.")
     if query:
@@ -166,7 +167,7 @@ def analyze(ctx: AppContext, inp: DiagnosisInput, log_result: bool = True) -> di
         overall = Confidence.NEEDS_CHECK
     else:
         overall = Confidence.INSUFFICIENT
-        result["warnings"].append("В локальной базе нет правил, документов и истории ремонтов, подходящих к описанию. "
+        result["notes"].append("В локальной базе нет правил, документов и истории ремонтов, подходящих к описанию. "
                                   "Уточните жалобу, коды ошибок и результаты диагностики или добавьте материалы в библиотеку.")
     result["overall"] = overall
     result["overall_title"] = Confidence.TITLES[overall]

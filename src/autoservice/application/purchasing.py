@@ -408,3 +408,16 @@ def list_purchases(ctx: AppContext, date_from: date | None = None, date_to: date
             d.pop("items")
             rows.append(d)
         return rows
+
+
+def attach_invoice(ctx: AppContext, purchase_id: int, path) -> int:
+    """Прикрепляет скан/файл накладной к закупке (не влияет на учёт, допускается в любом статусе)."""
+    from autoservice.application.documents_store import store_file
+
+    ctx.require(Perm.PURCHASE_EDIT)
+    with ctx.db.transaction() as s:
+        po = get_or_404(s, PurchaseOrder, purchase_id, "Закупка")
+        doc = store_file(s, ctx, path, "invoice", f"Накладная к {po.number}", purchase_id=po.id, supplier_id=po.supplier_id)
+        po.invoice_document_id = doc.id
+        audit(s, ctx, "purchase.attach_invoice", "purchase", po.id, document_id=doc.id)
+        return doc.id
