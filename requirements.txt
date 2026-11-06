@@ -1,4 +1,5 @@
-# Зависимости, которые входят в установленную программу (точные версии).
+# Runtime dependencies bundled into the installed application (pinned).
+# Install SQLAlchemy without C extensions: set DISABLE_SQLALCHEMY_CEXT=1 and use --no-binary SQLAlchemy.
 PySide6-Essentials==6.12.0
 PySide6-Pdf==6.12.0.140
 shiboken6==6.12.0

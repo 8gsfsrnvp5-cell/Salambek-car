@@ -17,6 +17,7 @@ jobs:
     env:
       DISABLE_SQLALCHEMY_CEXT: "1"
       PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -112,6 +113,8 @@ jobs:
 
   audit:
     runs-on: windows-2022
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

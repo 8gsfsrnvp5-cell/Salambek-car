@@ -28,6 +28,7 @@ $Py = "$Venv\Scripts\python.exe"
 & $Py -m pip install --upgrade pip --quiet
 # SQLAlchemy ставится без C-ускорителей: неподписанные .pyd блокируются Smart App Control.
 $env:DISABLE_SQLALCHEMY_CEXT = "1"
+$env:PYTHONUTF8 = "1"
 & $Py -m pip install --quiet --no-binary SQLAlchemy -r requirements.txt
 & $Py -m pip install --quiet pytest==9.2.0 pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.9
 if ($LASTEXITCODE -ne 0) { throw "Не удалось установить зависимости" }
