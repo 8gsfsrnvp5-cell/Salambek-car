@@ -56,6 +56,7 @@ jobs:
         shell: pwsh
         run: |
           $setup = (Resolve-Path installer/Output/AutoServiceAI-Setup.exe).Path
+          $py = (Get-Command python).Source  # нужен только для создания «рабочей» базы до обновления
           $dir = "C:\Program Files\AutoService AI"
           $data = "C:\ProgramData\AutoServiceAI"
           New-Item -ItemType Directory -Force reports | Out-Null
@@ -70,7 +71,7 @@ jobs:
           if ($r.ExitCode -ne 0) { throw "Самопроверка после установки не пройдена" }
           # 2. «Рабочая» база в папке данных, затем обновление поверх
           New-Item -ItemType Directory -Force "$data\data" | Out-Null
-          python -c "import sys; sys.path.insert(0,'src'); from pathlib import Path; from autoservice.persistence.migrate import upgrade; upgrade(Path(r'$data\data\autoservice.db'))"
+          & $py -c "import sys; sys.path.insert(0,'src'); from pathlib import Path; from autoservice.persistence.migrate import upgrade; upgrade(Path(r'$data\data\autoservice.db'))"
           $before = (Get-FileHash "$data\data\autoservice.db").Hash
           $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=reports\update.log" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Обновление завершилось с кодом $($p.ExitCode)" }
@@ -80,7 +81,8 @@ jobs:
           if ($r.ExitCode -ne 0) { throw "Самопроверка после обновления не пройдена" }
           # 3. Удаление: программа удаляется, данные остаются
           $p = Start-Process "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          Start-Sleep -Seconds 3
+          # Деинсталлятор Inno Setup перезапускается из временной папки — ждём завершения удаления.
+          for ($i = 0; $i -lt 60 -and (Test-Path "$dir\AutoServiceAI.exe"); $i++) { Start-Sleep -Seconds 1 }
           if (Test-Path "$dir\AutoServiceAI.exe") { throw "Программа не удалена" }
           if (-not (Test-Path "$data\data\autoservice.db")) { throw "База удалена вместе с программой!" }
           "Установка, обновление и удаление проверены" | Out-File reports\install-test.txt
