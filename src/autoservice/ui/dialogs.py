@@ -100,6 +100,15 @@ class PartDialog(QDialog):
                         ("Индивидуальная наценка", self.markup), ("Описание", self.description), ("", self.active)):
             form.addRow(text, w)
         form.addRow("", label("Наценка запчасти применяется, если в операции и у партии наценка не указана.", "Muted"))
+        if part_id:
+            photo_row = QHBoxLayout()
+            self.photo_lbl = label("", "Muted")
+            photo_row.addWidget(self.photo_lbl, 1)
+            photo_row.addWidget(button("Выбрать фото…", self.choose_photo))
+            photo_row.addWidget(button("Открыть фото", self.open_photo))
+            pw = QWidget()
+            pw.setLayout(photo_row)
+            form.addRow("Фотография", pw)
         self.tabs.addTab(main, "Основное")
         if part_id:
             self._build_detail_tabs()
@@ -196,6 +205,8 @@ class PartDialog(QDialog):
         self.markup.set_value(p["markup_pct"])
         self.description.setPlainText(p["description"])
         self.active.setChecked(p["is_active"])
+        self.photo_id = p["photo_document_id"]
+        self.photo_lbl.setText("фото прикреплено" if self.photo_id else "нет фото")
         kinds = {"oem": "OEM", "aftermarket": "Аналог производителя", "supplier": "Поставщика", "other": "Другой"}
         self.numbers.set_rows([{**n, "kind": kinds.get(n["kind"], n["kind"])} for n in p["numbers"]])
         self.analogs.set_rows(p["analogs"])
@@ -205,6 +216,24 @@ class PartDialog(QDialog):
         self.moves.set_rows(stock_docs.part_movements(self.ctx, self.part_id))
         titles = {"purchase_cost": "Цена закупки", "markup": "Наценка", "sale_price": "Цена продажи"}
         self.prices.set_rows([{**h, "kind": titles.get(h["kind"], h["kind"])} for h in p["price_history"]])
+
+    def choose_photo(self):
+        from autoservice.application.documents_store import add_attachment
+
+        path = pick_file(self, "Фотография запчасти", "Изображения (*.png *.jpg *.jpeg *.bmp *.webp)")
+        if not path:
+            return
+        doc_id = run(self, add_attachment, self.ctx, path, "photo", f"Фото {self.name.text()}", part_id=self.part_id)
+        if doc_id is not FAILED and run(self, catalog.set_part_photo, self.ctx, self.part_id, doc_id) is not FAILED:
+            self.load()
+
+    def open_photo(self):
+        if not self.photo_id:
+            return info(self, "Фото не прикреплено")
+        from autoservice.application.documents_store import document_file
+        from autoservice.ui.common import open_path
+
+        open_path(document_file(self.ctx, self.photo_id))
 
     def data(self) -> dict:
         return {"name": self.name.text(), "oem_number": self.oem.text(), "brand": self.brand.text(),

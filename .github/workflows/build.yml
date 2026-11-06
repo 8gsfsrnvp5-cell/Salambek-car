@@ -1,0 +1,122 @@
+name: Тесты и сборка установщика Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      DISABLE_SQLALCHEMY_CEXT: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Зависимости
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --no-binary SQLAlchemy -r requirements.txt
+          python -m pip install pytest==9.2.0 pyinstaller==6.22.3 pyinstaller-hooks-contrib==2026.9
+
+      - name: Автотесты
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Сборка PyInstaller
+        shell: pwsh
+        run: python -m PyInstaller installer/AutoServiceAI.spec --noconfirm --clean --distpath dist --workpath build/pyinstaller
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          $version = (Select-String -Path src/autoservice/__init__.py -Pattern '__version__ = "([^"]+)"').Matches[0].Groups[1].Value
+          & $iscc "/DAppVersion=$version" installer/AutoServiceAI.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $hash = (Get-FileHash installer/Output/AutoServiceAI-Setup.exe -Algorithm SHA256).Hash
+          "$hash  AutoServiceAI-Setup.exe" | Out-File -Encoding ascii installer/Output/AutoServiceAI-Setup.exe.sha256
+
+      - name: Установка, самопроверка, обновление и удаление
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path installer/Output/AutoServiceAI-Setup.exe).Path
+          $dir = "C:\Program Files\AutoService AI"
+          $data = "C:\ProgramData\AutoServiceAI"
+          New-Item -ItemType Directory -Force reports | Out-Null
+          # 1. Установка без Python в PATH: программа должна работать сама по себе
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/TASKS=desktopicon","/LOG=reports\install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Установка завершилась с кодом $($p.ExitCode)" }
+          if (-not (Test-Path "$dir\AutoServiceAI.exe")) { throw "Исполняемый файл не установлен" }
+          if (-not (Test-Path "$dir\autoservice.ini")) { throw "Не записан путь к данным" }
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python|hostedtoolcache' }) -join ';'
+          $r = Start-Process "$dir\AutoServiceAI.exe" -ArgumentList "--self-test","$PWD\reports\selftest-install.json" -Wait -PassThru
+          Get-Content reports\selftest-install.json
+          if ($r.ExitCode -ne 0) { throw "Самопроверка после установки не пройдена" }
+          # 2. «Рабочая» база в папке данных, затем обновление поверх
+          New-Item -ItemType Directory -Force "$data\data" | Out-Null
+          python -c "import sys; sys.path.insert(0,'src'); from pathlib import Path; from autoservice.persistence.migrate import upgrade; upgrade(Path(r'$data\data\autoservice.db'))"
+          $before = (Get-FileHash "$data\data\autoservice.db").Hash
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/LOG=reports\update.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Обновление завершилось с кодом $($p.ExitCode)" }
+          if ((Get-FileHash "$data\data\autoservice.db").Hash -ne $before) { throw "База изменилась при обновлении программы" }
+          if (-not (Get-ChildItem "$data\backups\before-update" -Filter "installer-*.db")) { throw "Нет копии базы перед обновлением" }
+          $r = Start-Process "$dir\AutoServiceAI.exe" -ArgumentList "--self-test","$PWD\reports\selftest-update.json" -Wait -PassThru
+          if ($r.ExitCode -ne 0) { throw "Самопроверка после обновления не пройдена" }
+          # 3. Удаление: программа удаляется, данные остаются
+          $p = Start-Process "$dir\unins000.exe" -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          Start-Sleep -Seconds 3
+          if (Test-Path "$dir\AutoServiceAI.exe") { throw "Программа не удалена" }
+          if (-not (Test-Path "$data\data\autoservice.db")) { throw "База удалена вместе с программой!" }
+          "Установка, обновление и удаление проверены" | Out-File reports\install-test.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutoServiceAI-Setup
+          path: |
+            installer/Output/AutoServiceAI-Setup.exe
+            installer/Output/AutoServiceAI-Setup.exe.sha256
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: Релиз (только для тегов v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installer/Output/AutoServiceAI-Setup.exe
+            installer/Output/AutoServiceAI-Setup.exe.sha256
+
+  audit:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Проверка зависимостей на известные уязвимости
+        shell: pwsh
+        run: |
+          python -m pip install pip-audit==2.10.1
+          python -m pip_audit -r requirements.txt --desc
